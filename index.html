@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aviator Game – Login, Deposit & Withdraw</title>
+  <style>
+    body { font-family:sans-serif; background:linear-gradient(to right,#1d1f20,#2c2f33); color:#eee; text-align:center; padding:30px; }
+    h1 { font-size:32px; color:#f5b841; margin-bottom:10px; }
+    input, select { padding:10px; font-size:16px; margin:10px; border-radius:5px; border:none; width:200px; }
+    button { font-size:18px; padding:10px 25px; margin:10px; border:none; border-radius:5px;
+             background:#333; color:#fff; cursor:pointer; transition:background-color .3s; }
+    button:hover:not(:disabled){background:#555;}
+    button:disabled { opacity:.4; cursor:not-allowed; }
+
+    #loginSection, #gameSection { margin-top:30px; }
+    #gameSection { display:none; transition:transform .3s ease; transform-origin:center; }
+
+    .scaled-up { transform:scale(1.2); }
+
+    #bank { font-size:24px; margin:10px 0 20px; color:#90ee90; }
+    #plane { font-size:80px; margin:30px; transition:transform .05s linear; display:inline-block; }
+    #multiplier { font-size:50px; margin:20px; color:#eee; transition:color .3s ease; }
+    .explosion { font-size:80px; color:red; animation:boom .6s ease-out forwards; }
+    @keyframes boom { to { transform:scale(2); opacity:0; } }
+
+    .bank-controls { margin-top:20px; display:none; }
+    .modal {
+      display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center;
+      z-index:1000;
+    }
+    .modal-content {
+      background:#2c2f33; padding:20px; width:90%; max-width:400px; border-radius:10px; color:#fff;
+    }
+    .modal-content h3 { margin-top:0; color:#f5b841; }
+    .close { float:right; font-size:24px; cursor:pointer; color:#ccc; }
+    .close:hover { color:red; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN / SIGNUP -->
+  <div id="loginSection">
+    <h1>Login / Sign Up</h1>
+    <input type="text" id="username" placeholder="Username" autocomplete="username" /><br>
+    <input type="password" id="password" placeholder="Password" autocomplete="current-password" /><br>
+    <button onclick="signup()">Sign Up</button>
+    <button onclick="login()">Login</button>
+    <p id="loginMsg"></p>
+  </div>
+
+  <!-- GAME SECTION -->
+  <div id="gameSection">
+    <h1>Aviator</h1>
+    <div id="bank">Bank: ₦1000.00</div>
+    <button onclick="toggleWallet()">Manage Wallet</button>
+    <button onclick="showTransactions()">Transactions</button>
+    
+    <div class="bank-controls" id="walletSection">
+      <button onclick="showDepositModal()">Deposit</button>
+      <button onclick="showWithdrawModal()">Withdraw</button>
+    </div>
+
+    <div id="plane">✈️</div>
+    <div id="multiplier">Multiplier: 1.00x</div>
+
+    <input type="number" id="betAmount" placeholder="Bet Amount" min="10" value="10" /><br>
+    <button id="startBtn">Start</button>
+    <button id="cashoutBtn" disabled>Cash Out</button>
+    <button id="resetBtn" disabled>Reset</button>
+  </div>
+
+  <!-- Deposit Modal -->
+  <div id="depositModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('depositModal')">&times;</span>
+      <h3>Deposit Funds</h3>
+      
+      <p><strong>Bank:</strong> PalmPay</p>
+      <p><strong>Account Name:</strong> Aviator: Usman Olaitan</p>
+      <p><strong>Account Number:</strong> 704541500</p>
+
+      <input type="number" id="depAmt" placeholder="Amount ₦" min="100" /><br>
+      <button onclick="confirmDeposit()">I have sent the money</button>
+    </div>
+  </div>
+
+  <!-- Withdraw Modal -->
+  <div id="withdrawModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('withdrawModal')">&times;</span>
+      <h3>Withdraw Funds</h3>
+      <input type="number" id="wdAmt" placeholder="Amount ₦" min="1" /><br>
+      <input type="text" id="wdAcct" placeholder="Account Number" /><br>
+      <select id="wdBank">
+        <option value="">Select Bank</option>
+        <option>GTBank</option><option>Access Bank</option><option>UBA</option><option>Zenith</option>
+      </select><br>
+      <button onclick="confirmWithdraw()">Withdraw</button>
+    </div>
+  </div>
+
+  <!-- Transactions Modal -->
+  <div id="transactionsModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal('transactionsModal')">&times;</span>
+      <h3>Transaction History</h3>
+      <div id="transactionList" style="text-align:left; max-height:300px; overflow:auto;"></div>
+    </div>
+  </div>
+
+  <!-- Audio assets -->
+  <audio id="soundCountdown" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+  <audio id="soundTakeoff" src="https://actions.google.com/sounds/v1/aircraft/aircraft_takeoff.ogg"></audio>
+  <audio id="soundCrash" src="https://actions.google.com/sounds/v1/explosions/explosion.ogg"></audio>
+  <audio id="soundCashout" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
+
+  <script>
+    const loginMsg = document.getElementById('loginMsg');
+    const loginSec = document.getElementById('loginSection');
+    const gameSec = document.getElementById('gameSection');
+
+    const soundCountdown = document.getElementById('soundCountdown');
+    const soundTakeoff = document.getElementById('soundTakeoff');
+    const soundCrash = document.getElementById('soundCrash');
+    const soundCashout = document.getElementById('soundCashout');
+
+    function signup(){
+      const u = document.getElementById('username').value.trim(),
+            p = document.getElementById('password').value.trim();
+      if(!u || !p){
+        loginMsg.textContent = 'Enter both username and password.';
+        return;
+      }
+      if(localStorage.getItem('user_' + u)){
+        loginMsg.textContent = 'User exists. Please login.';
+        return;
+      }
+      localStorage.setItem('user_' + u, p);
+      loginMsg.textContent = 'Signup success, please login.';
+    }
+
+    function login(){
+      const u = document.getElementById('username').value.trim(),
+            p = document.getElementById('password').value.trim(),
+            storedPass = localStorage.getItem('user_' + u);
+      if(storedPass && storedPass === p){
+        loginSec.style.display = 'none';
+        gameSec.style.display = 'block';
+        gameSec.classList.add('scaled-up');
+        resetGame();
+      } else {
+        loginMsg.textContent = 'Invalid credentials.';
+      }
+    }
+
+    const bankEl = document.getElementById('bank'),
+          walletSec = document.getElementById('walletSection'),
+          plane = document.getElementById('plane'),
+          multiplierEl = document.getElementById('multiplier'),
+          startBtn = document.getElementById('startBtn'),
+          cashoutBtn = document.getElementById('cashoutBtn'),
+          resetBtn = document.getElementById('resetBtn'),
+          betInput = document.getElementById('betAmount');
+
+    let bank = 1000,
+        multiplier = 1,
+        crashPoint = 0,
+        flying = false,
+        lastTime = 0,
+        animId = null,
+        countdownInterval = null,
+        transactions = [];
+
+    function updateBankDisplay(){
+      bankEl.textContent = `Bank: ₦${bank.toFixed(2)}`;
+    }
+
+    function toggleWallet(){
+      walletSec.style.display = walletSec.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function showDepositModal(){
+      document.getElementById('depositModal').style.display = 'flex';
+    }
+
+    function showWithdrawModal(){
+      document.getElementById('withdrawModal').style.display = 'flex';
+    }
+
+    function closeModal(id){
+      document.getElementById(id).style.display = 'none';
+    }
+
+    function confirmDeposit(){
+      const amt = Number(document.getElementById('depAmt').value);
+      if (isNaN(amt) || amt < 100) {
+        alert('Minimum deposit is ₦100.');
+        return;
+      }
+      bank += amt;
+      updateBankDisplay();
+      closeModal('depositModal');
+      transactions.push({
+        type: 'Deposit',
+        amount: amt,
+        method: 'PalmPay - Aviator: Usman Olaitan (1234567890)',
+        time: new Date()
+      });
+      alert(`₦${amt} deposited to PalmPay (Aviator: Usman Olaitan).`);
+    }
+
+    function confirmWithdraw(){
+      const amt = Number(document.getElementById('wdAmt').value),
+            acc = document.getElementById('wdAcct').value.trim(),
+            bk = document.getElementById('wdBank').value;
+      if(isNaN(amt) || amt < 1 || amt > bank || !acc || !bk){
+        alert('Check all fields and ensure you have sufficient balance.');
+        return;
+      }
+      bank -= amt;
+      updateBankDisplay();
+      closeModal('withdrawModal');
+      transactions.push({
+        type: 'Withdraw',
+        amount: amt,
+        method: `${bk} (${acc})`,
+        time: new Date()
+      });
+      alert(`₦${amt} withdrawn to ${bk} (${acc}).`);
+    }
+
+    function generateCrashPoint(){
+      const r = Math.random();
+      const cp = -Math.log(1 - r) / 0.3;
+      return Math.min(Math.max(cp, 1), 100);
+    }
+
+    function resetGame(){
+      multiplier = 1;
+      multiplierEl.textContent = `Multiplier: ${multiplier.toFixed(2)}x`;
+      multiplierEl.style.color = '#eee';
+      plane.style.transform = 'translateX(0) rotate(0deg)';
+      plane.textContent = '✈️';
+      plane.classList.remove('explosion');
+      cashoutBtn.disabled = true;
+      startBtn.disabled = false;
+      resetBtn.disabled = true;
+      flying = false;
+      lastTime = 0;
+      if(animId) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
+      if(countdownInterval){
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      updateBankDisplay();
+    }
+
+    function animate(ts){
+      if(!lastTime) lastTime = ts;
+      const delta = ts - lastTime;
+      lastTime = ts;
+
+      // Smooth increase in multiplier speed with delta time for smooth animation
+      multiplier += delta * 0.0002;
+      multiplierEl.textContent = `Multiplier: ${multiplier.toFixed(2)}x`;
+      // Plane moves right and rotates smoothly
+      plane.style.transform = `translateX(${Math.min(multiplier * 20, 1000)}px) rotate(${Math.min(multiplier * 20, 360)}deg)`;
+
+      if(multiplier >= crashPoint){
+        flying = false;
+        if(animId) {
+          cancelAnimationFrame(animId);
+          animId = null;
+        }
+        multiplierEl.style.color = 'red';
+        multiplierEl.textContent = `💥 Crashed at ${crashPoint.toFixed(2)}x!`;
+        plane.textContent = '💥';
+        plane.classList.add('explosion');
+        soundCrash.play();
+        const betVal = Number(betInput.value) || 0;
+        transactions.push({ type: 'Game Loss', amount: -betVal, time: new Date() });
+        alert(`Crashed! Lost ₦${betVal.toFixed(2)}`);
+        cashoutBtn.disabled = true;
+        startBtn.disabled = false;
+        resetBtn.disabled = true;
+        return;
+      }
+      animId = requestAnimationFrame(animate);
+    }
+
+    function startGame(){
+      if(flying) return;
+      const bet = Number(betInput.value);
+      if(isNaN(bet) || bet < 10){
+        alert('Minimum bet is ₦10.');
+        return;
+      }
+      if(bet > bank){
+        alert('Insufficient funds.');
+        return;
+      }
+      bank -= bet;
+      updateBankDisplay();
+
+      // Disable buttons during countdown
+      startBtn.disabled = true;
+      cashoutBtn.disabled = true;
+      resetBtn.disabled = true;
+
+      multiplierEl.style.color = '#eee';
+      plane.textContent = '✈️';
+      plane.classList.remove('explosion');
+
+      // Countdown before launch
+      let count = 3;
+      multiplierEl.textContent = `Launching in ${count}...`;
+      soundCountdown.play();
+
+      countdownInterval = setInterval(() => {
+        count--;
+        if(count > 0) {
+          multiplierEl.textContent = `Launching in ${count}...`;
+          soundCountdown.currentTime = 0;
+          soundCountdown.play();
+        } else {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+          multiplierEl.textContent = `Multiplier: 1.00x`;
+          crashPoint = generateCrashPoint();
+          multiplier = 1;
+          flying = true;
+          lastTime = 0;
+          cashoutBtn.disabled = false;
+          soundTakeoff.play();
+          animId = requestAnimationFrame(animate);
+        }
+      }, 1000);
+    }
+
+    function cashOut(){
+      if(!flying) return;
+      if(animId) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
+      flying = false;
+      const bet = Number(betInput.value);
+      const win = bet * multiplier;
+      bank += win;
+      updateBankDisplay();
+      transactions.push({ type: 'Game Win', amount: win, time: new Date() });
+      multiplierEl.textContent = `✅ Cashed out at ${multiplier.toFixed(2)}x! Won ₦${win.toFixed(2)}`;
+      multiplierEl.style.color = 'limegreen';
+      soundCashout.play();
+      alert(`You won ₦${win.toFixed(2)}!`);
+      cashoutBtn.disabled = true;
+      startBtn.disabled = false;
+      resetBtn.disabled = false;
+    }
+
+    function reset(){
+      if(animId) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
+      if(countdownInterval){
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      resetGame();
+    }
+
+    function showTransactions(){
+      const container = document.getElementById('transactionList');
+      if(transactions.length === 0){
+        container.innerHTML = '<p>No transactions yet.</p>';
+      } else {
+        container.innerHTML = transactions.map(tx => `
+          <div style="border-bottom:1px solid #444; padding:5px 0;">
+            <strong>${tx.type}</strong>: ₦${Number(tx.amount).toFixed(2)} <br>
+            ${tx.method ? `via ${tx.method}<br>` : ''}
+            <small>${tx.time.toLocaleString()}</small>
+          </div>
+        `).join('');
+      }
+      document.getElementById('transactionsModal').style.display = 'flex';
+    }
+
+    startBtn.addEventListener('click', startGame);
+    cashoutBtn.addEventListener('click', cashOut);
+    resetBtn.addEventListener('click', reset);
+
+    resetGame();
+  </script>
+</body>
+</html>
+
